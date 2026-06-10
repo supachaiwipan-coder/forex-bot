@@ -37,13 +37,12 @@ def send_telegram_message(token, chat_id, text):
         print(f"Error sending to Telegram: {e}")
 
 # ========================================================
-# 🧠 ฟังก์ชันใช้ AI แปลและสรุปข่าวเป็นภาษาไทย (สไตล์ที่พี่ต้องการ)
+# 🧠 ฟังก์ชันใช้ AI แปลและสรุปข่าวเป็นภาษาไทย
 # ========================================================
 def summarize_news_with_gemini(api_key, raw_title):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
-    # สั่งให้ AI สรุปตามรูปแบบเป๊ะๆ
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านข่าวสาร Forex และทองคำ จงแปลและสรุปหัวข้อข่าวภาษาอังกฤษต่อไปนี้ให้เป็นภาษาไทย "
         f"โดยเขียนออกมาเป็นหัวข้อย่อยสั้นๆ กระชับ ได้ใจความชัดเจน อ่านง่ายจบในไม่กี่บรรทัด "
@@ -133,16 +132,18 @@ def chart_loop_process(token):
                 payload = {'chat_id': MY_CHAT_ID, 'caption': caption, 'parse_mode': 'HTML'}
                 requests.post(photo_url, data=payload, files=files, timeout=20)
         except Exception as e:
-            print(f"Chart loop error: {e}")
+            print(f"Chart error: {e}")
             
         time.sleep(3600)
 
 # ========================================================
-# 🌐 2. ลูปเช็กข่าวสารด่วน + แปลสรุปไทย (เช็กไวทุกๆ 10 วินาที)
+# 🌐 2. ลูปเช็กข่าวสารด่วน (เวอร์ชันดึงข่าวปัจจุบันส่งทันที)
 # ========================================================
 def news_loop_process(token, gemini_key):
     print("🤖 เริ่มต้นระบบเช็กข่าวสารและสรุปภาษาไทยอัตโนมัติ...")
-    initial_run = True 
+    
+    # [ปรับแก้ตรงนี้]: ปรับเป็น False ตั้งแต่แรก เพื่อให้ข่าวปัจจุบันเด้งเข้ากลุ่มทันทีเพื่อเทสระบบ!
+    initial_run = False 
     
     headers = {"User-Agent": "Mozilla/5.0"}
     feeds = {
@@ -159,7 +160,8 @@ def news_loop_process(token, gemini_key):
                 root = ET.fromstring(response.content)
                 items = root.findall('.//item')
                 
-                for item in reversed(items):
+                # ดึงข่าวมาเทส 2-3 ข่าวแรกที่เจอทันที
+                for item in reversed(items[:3]): 
                     title_elem = item.find('title')
                     link_elem = item.find('link')
                     if title_elem is None or link_elem is None: continue
@@ -170,17 +172,14 @@ def news_loop_process(token, gemini_key):
                     if not link or link in sent_news_links: continue
                     sent_news_links.add(link)
                     
-                    # เมื่อมีข่าวใหม่เข้ามา ยิงเข้า AI สรุปเป็นภาษาไทยทันที!
                     if not initial_run:
-                        # 1. ส่งให้ AI แปลและสรุปผลกระทบให้
+                        print(f"กำลังส่งข่าวไปสรุปที่ AI: {title}")
                         th_summary = summarize_news_with_gemini(gemini_key, title)
                         
-                        if not th_summary:
-                            th_summary = f"ไม่สามารถสรุปได้ชั่วคราว: {title}"
+                        if not th_summary: continue
                             
                         clean_summary = escape_html(th_summary)
                         
-                        # 2. จัดหน้ากากข้อความให้สวยงามตามภาพต้นฉบับ
                         message = (
                             f"📰 <b>📢 สรุปข่าวเด่นฝั่งนอก ({source})</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -188,15 +187,11 @@ def news_loop_process(token, gemini_key):
                             f"🔗 <a href='{link}'>อ่านข่าวต้นฉบับภาษาอังกฤษ</a>"
                         )
                         send_telegram_message(token, MY_CHAT_ID, message)
-                        time.sleep(1) # ป้องกันการส่งถี่เกินไป
+                        time.sleep(2) # หน่วงเวลาให้ AI หายใจและกัน Telegram บล็อก
             except Exception as e:
                 print(f"News fetch error: {e}")
-                
-        if initial_run:
-            print("✅ ระบบจำฐานข่าวรอบแรกเสร็จแล้ว พร้อมสรุปข่าวใหม่ภาษาไทยในอีก 10 วินาที!")
-            initial_run = False
             
-        time.sleep(10) # เช็กข่าวถี่ทุกๆ 10 วินาที
+        time.sleep(10) # เช็กข่าวใหม่ทุกๆ 10 วินาที
 
 # ========================================================
 # 🔁 3. เริ่มสตาร์ทระบบทั้งหมด
@@ -205,11 +200,8 @@ def start_bot():
     token = os.environ.get("TOKEN")
     gemini_key = os.environ.get("GEMINI_API_KEY")
     
-    if not token:
-        print("❌ ห้ามลืมตั้งค่าตัวแปร TOKEN นะครับพี่")
-        return
-    if not gemini_key:
-        print("❌ พี่ลืมใส่ GEMINI_API_KEY บอทจะสรุปภาษาไทยไม่ได้นะครับ!")
+    if not token or not gemini_key:
+        print("❌ ตรวจสอบ TOKEN และ GEMINI_API_KEY ใน Render ด้วยครับ")
         return
         
     threading.Thread(target=chart_loop_process, args=(token,), daemon=True).start()
@@ -219,5 +211,4 @@ start_bot()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-    
     

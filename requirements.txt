@@ -1,5 +1,5 @@
-flask
-ccxt
-pandas
-ta
+Flask
 requests
+yfinance
+matplotlib
+pandas

@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 app = Flask(__name__)
 
 # ========================================================
-# ⚙️ [ตั้งค่าเลข ID ห้องของพี่ตรงนี้ได้เลยครับ!]
+# ⚙️ [ตั้งค่าเลข ID ห้องของพี่ตรงนี้เรียบร้อยครับ!]
 # ========================================================
 MY_CHAT_ID = -1003911767447  # เลขกลุ่มของพี่ใส่ตรงนี้เรียบร้อยครับ
 
@@ -164,7 +164,7 @@ def fetch_and_notify_filtered_news(token):
                 if not is_first_run and has_keyword:
                     clean_title = escape_html(title)
                     message = (
-                        f"🚨 <b>[{source}] breaking Financial Focus!</b>\n"
+                        f"🚨 <b>[{source}] Breaking Financial Focus!</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━\n"
                         f"📌 <b>หัวข้อข่าวสำคัญ:</b> {clean_title}\n\n"
                         f"🔗 <a href='{link}'>คลิกเพื่อเปิดอ่านข่าวตัวเต็ม</a>"

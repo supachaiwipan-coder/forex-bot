@@ -1,5 +1,4 @@
-Flask
-requests
-yfinance
-matplotlib
-pandas
+Flask==3.0.3
+requests==2.31.0
+yfinance==0.2.40
+matplotlib==3.8.4

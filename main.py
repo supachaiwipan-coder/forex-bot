@@ -1,5 +1,4 @@
-
-                from flask import Flask
+from flask import Flask
 import threading
 import time
 import requests
@@ -15,7 +14,7 @@ CHAT_ID = "-1003911767447"
 
 sent_events = set()
 
-# 🌐 Render Safety Net: Tells Render that your bot is alive and listening
+# 🌐 Render Safety Webhook: Keeps the service live
 @app.route('/')
 def home():
     return "Forex Factory Calendar System - Online & Active 🚀"
@@ -92,7 +91,7 @@ def news_loop():
         time.sleep(600) # Checks for updates every 10 minutes
 
 # ========================================================
-# 🚀 System Bootstrapper (Launches background threads)
+# 🚀 System Bootstrapper
 # ========================================================
 def start_bot():
     threading.Thread(target=news_loop, daemon=True).start()
@@ -100,6 +99,6 @@ def start_bot():
 start_bot()
 
 if __name__ == "__main__":
-    # Binds port 10000 to keep Render Web Service completely stable
+    # Binds port 10000 to keep Render Web Service stable
     app.run(host="0.0.0.0", port=10000)
-    
+  

@@ -22,7 +22,7 @@ sent_news_links = set()
 
 @app.route('/')
 def home():
-    return "Forex Core Active Running 🚀"
+    return "Forex Smart Summary Bot Running 🚀"
 
 def escape_html(text):
     if not text: return ""
@@ -32,20 +32,47 @@ def send_telegram_message(token, chat_id, text):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
     try: 
-        res = requests.post(url, json=payload, timeout=5)
-        # พิมพ์ดูสถานะใน Log ของ Render เผื่อเช็ค Error
-        print(f"Telegram Response: {res.status_code}") 
+        requests.post(url, json=payload, timeout=8)
     except Exception as e: 
-        print(f"Error sending message: {e}")
+        print(f"Error sending to Telegram: {e}")
 
 # ========================================================
-# 📈 1. ลูปส่งกราฟวิเคราะห์ (ทำงานแยกอิสระ ส่งทุกๆ 1 ชั่วโมง)
+# 🧠 ฟังก์ชันใช้ AI แปลและสรุปข่าวเป็นภาษาไทย (สไตล์ที่พี่ต้องการ)
+# ========================================================
+def summarize_news_with_gemini(api_key, raw_title):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    # สั่งให้ AI สรุปตามรูปแบบเป๊ะๆ
+    prompt = (
+        f"คุณคือผู้เชี่ยวชาญด้านข่าวสาร Forex และทองคำ จงแปลและสรุปหัวข้อข่าวภาษาอังกฤษต่อไปนี้ให้เป็นภาษาไทย "
+        f"โดยเขียนออกมาเป็นหัวข้อย่อยสั้นๆ กระชับ ได้ใจความชัดเจน อ่านง่ายจบในไม่กี่บรรทัด "
+        f"และวิเคราะห์ผลกระทบต่อราคาทองคำ (XAU/USD) หรือ ดอลลาร์ (DXY) สั้นๆ ท้ายประโยคด้วย\n\n"
+        f"หัวข้อข่าวภาษาอังกฤษ: {raw_title}"
+    )
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            res_json = response.json()
+            summary_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            return summary_text.strip()
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+    return None
+
+# ========================================================
+# 📈 1. ลูปส่งกราฟเทคนิค (ส่งทุกๆ 1 ชั่วโมง)
 # ========================================================
 def chart_loop_process(token):
-    print("📈 เริ่มต้นระบบวิเคราะห์กราฟเทคนิค...")
     while True:
         try:
-            print("📈 กำลังประมวลผลกราฟราคาทองคำ & ดอลลาร์...")
             gold_ticker = yf.Ticker("GC=F")       
             oil_ticker = yf.Ticker("CL=F")        
             dxy_ticker = yf.Ticker("DX-Y.NYB")    
@@ -105,22 +132,19 @@ def chart_loop_process(token):
                 files = {'photo': ('chart.png', buf, 'image/png')}
                 payload = {'chat_id': MY_CHAT_ID, 'caption': caption, 'parse_mode': 'HTML'}
                 requests.post(photo_url, data=payload, files=files, timeout=20)
-                print("✅ ส่งกราฟเข้ากลุ่มเรียบร้อย!")
         except Exception as e:
             print(f"Chart loop error: {e}")
             
-        time.sleep(3600) # วาดกราฟใหม่ส่งทุกๆ 1 ชั่วโมง
+        time.sleep(3600)
 
 # ========================================================
-# 🌐 2. ลูปเช็กข่าวสารด่วน (ทำงานแยกอิสระ เช็กไวทุกๆ 10 วินาที)
+# 🌐 2. ลูปเช็กข่าวสารด่วน + แปลสรุปไทย (เช็กไวทุกๆ 10 วินาที)
 # ========================================================
-def news_loop_process(token):
-    print("🤖 เริ่มต้นระบบเช็กข่าวสาร Real-time (ทุก 10 วินาที)...")
-    
-    # รอบแรกสุด บอทจะจำลิงก์ปัจจุบันก่อนเพื่อไม่ให้ข่าวเก่าเด้งถล่มห้อง
+def news_loop_process(token, gemini_key):
+    print("🤖 เริ่มต้นระบบเช็กข่าวสารและสรุปภาษาไทยอัตโนมัติ...")
     initial_run = True 
     
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     feeds = {
         "Investing.com": "https://www.investing.com/rss/news_1.rss",
         "CNBC Markets": "https://www.cnbc.com/id/100003114/device/rss/rss.html"
@@ -135,7 +159,6 @@ def news_loop_process(token):
                 root = ET.fromstring(response.content)
                 items = root.findall('.//item')
                 
-                # อ่านจากข่าวเก่าไปข่าวใหม่สุด
                 for item in reversed(items):
                     title_elem = item.find('title')
                     link_elem = item.find('link')
@@ -147,42 +170,54 @@ def news_loop_process(token):
                     if not link or link in sent_news_links: continue
                     sent_news_links.add(link)
                     
-                    # ถ้าไม่ใช่การรันจำค่าครั้งแรก และมีข่าวใหม่เกิดขึ้น ยิงเข้ากลุ่มทันที!
+                    # เมื่อมีข่าวใหม่เข้ามา ยิงเข้า AI สรุปเป็นภาษาไทยทันที!
                     if not initial_run:
-                        clean_title = escape_html(title)
+                        # 1. ส่งให้ AI แปลและสรุปผลกระทบให้
+                        th_summary = summarize_news_with_gemini(gemini_key, title)
+                        
+                        if not th_summary:
+                            th_summary = f"ไม่สามารถสรุปได้ชั่วคราว: {title}"
+                            
+                        clean_summary = escape_html(th_summary)
+                        
+                        # 2. จัดหน้ากากข้อความให้สวยงามตามภาพต้นฉบับ
                         message = (
-                            f"📰 <b>[{source}] อัปเดตข่าวสารตลาดด่วน</b>\n"
+                            f"📰 <b>📢 สรุปข่าวเด่นฝั่งนอก ({source})</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━\n"
-                            f"📌 <b>หัวข้อ:</b> {clean_title}\n\n"
-                            f"🔗 <a href='{link}'>คลิกเพื่อเปิดอ่านข่าวตัวเต็ม</a>"
+                            f"{clean_summary}\n\n"
+                            f"🔗 <a href='{link}'>อ่านข่าวต้นฉบับภาษาอังกฤษ</a>"
                         )
                         send_telegram_message(token, MY_CHAT_ID, message)
-                        time.sleep(0.5) # หน่วงสั้นๆ กันบอทโดน Telegram บล็อก
+                        time.sleep(1) # ป้องกันการส่งถี่เกินไป
             except Exception as e:
-                print(f"News fetch error from {source}: {e}")
+                print(f"News fetch error: {e}")
                 
         if initial_run:
-            print("✅ บอทบันทึกฐานข้อมูลข่าวรอบแรกเสร็จแล้ว กำลังสแตนด์บายรอข่าวใหม่ทุกๆ 10 วินาที...")
+            print("✅ ระบบจำฐานข่าวรอบแรกเสร็จแล้ว พร้อมสรุปข่าวใหม่ภาษาไทยในอีก 10 วินาที!")
             initial_run = False
             
-        time.sleep(10) # ⏱️ วนลูปตรวจจับข่าวใหม่ในทุกๆ 10 วินาทีแบบเป๊ะๆ
+        time.sleep(10) # เช็กข่าวถี่ทุกๆ 10 วินาที
 
 # ========================================================
-# 🔁 3. ฟังก์ชันเตรียมตัวแปร และสั่งรันระบบเบื้องหลัง
+# 🔁 3. เริ่มสตาร์ทระบบทั้งหมด
 # ========================================================
 def start_bot():
     token = os.environ.get("TOKEN")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    
     if not token:
-        print("❌ ไม่พบตัวแปร TOKEN ใน Environment Variables ของ Render")
+        print("❌ ห้ามลืมตั้งค่าตัวแปร TOKEN นะครับพี่")
+        return
+    if not gemini_key:
+        print("❌ พี่ลืมใส่ GEMINI_API_KEY บอทจะสรุปภาษาไทยไม่ได้นะครับ!")
         return
         
-    # สั่งแยกรัน 2 ลูปขนานกันไป ไม่ขัดขากันเองแล้วครับ
     threading.Thread(target=chart_loop_process, args=(token,), daemon=True).start()
-    threading.Thread(target=news_loop_process, args=(token,), daemon=True).start()
+    threading.Thread(target=news_loop_process, args=(token, gemini_key), daemon=True).start()
 
-# สั่งให้บอทเริ่มทำงาน
 start_bot()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+    
     
